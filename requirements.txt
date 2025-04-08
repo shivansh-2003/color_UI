@@ -1,0 +1,9 @@
+Pillow
+requests
+google-generativeai
+langchain
+langchain_groq 
+python-dotenv
+fastapi
+uvicorn
+python-multipart
