@@ -1,7 +1,7 @@
 import os
 import requests
 import base64
-from PIL import Image, ImageDraw
+from PIL import Image
 from io import BytesIO
 import google.generativeai as genai
 from langchain_groq import ChatGroq
@@ -229,260 +229,7 @@ def organize_palette(image_colors, description_colors):
     
     return palette
 
-def generate_ui_preview(color_palette, template_type="website", gemini_api_key=None):
-    """
-    Generate a UI preview image with the suggested color palette.
-    
-    Args:
-        color_palette: Dictionary containing organized color palette
-        template_type: Type of UI template to generate (website, mobile, dashboard)
-        gemini_api_key: Google Gemini API key for potential AI-generated preview
-    
-    Returns:
-        Dictionary with base64 encoded image and mime type
-    """
-    try:
-        # First, try to use Gemini to generate a more realistic preview if API key provided
-        if gemini_api_key:
-            try:
-                preview = generate_preview_with_gemini(color_palette, template_type, gemini_api_key)
-                if preview:
-                    return preview
-            except Exception as e:
-                print(f"Error generating preview with Gemini: {e}")
-                # Fall back to manual preview generation
-        
-        # Extract colors from palette
-        primary_color = color_palette["primary"]
-        secondary_color = color_palette["secondary"]
-        accent_color = color_palette["accent"]
-        background_color = color_palette["background"]
-        text_color = color_palette["text"]
-        
-        # Set dimensions based on template type
-        if template_type == "mobile":
-            width, height = 360, 640
-        elif template_type == "dashboard":
-            width, height = 1200, 800
-        else:  # Default to website
-            width, height = 1200, 800
-            
-        # Create a new image with the background color
-        img = Image.new('RGB', (width, height), background_color)
-        draw = ImageDraw.Draw(img)
-        
-        # Draw a header with the primary color
-        draw.rectangle([(0, 0), (width, 80)], fill=primary_color)
-        
-        # Draw a sidebar with the secondary color (for website and dashboard)
-        if template_type != "mobile":
-            draw.rectangle([(0, 80), (250, height)], fill=secondary_color)
-        
-        # Draw content based on template type
-        if template_type == "mobile":
-            # Header
-            draw.rectangle([(0, 0), (width, 60)], fill=primary_color)
-            
-            # Content areas
-            draw.rectangle([(20, 80), (width - 20, 200)], fill="#FFFFFF", outline=secondary_color)
-            draw.rectangle([(20, 220), (width - 20, 340)], fill="#FFFFFF", outline=secondary_color)
-            draw.rectangle([(20, 360), (width - 20, 480)], fill="#FFFFFF", outline=secondary_color)
-            
-            # Bottom navigation
-            draw.rectangle([(0, height - 60), (width, height)], fill=secondary_color)
-            
-            # Accent button
-            draw.ellipse([(width - 80, height - 120), (width - 20, height - 60)], fill=accent_color)
-            
-            # Add some mock text lines
-            for i in range(3):
-                y_pos = 100 + i * 20
-                draw.rectangle([(40, y_pos), (width - 40, y_pos + 10)], fill=text_color)
-            
-            for i in range(3):
-                y_pos = 240 + i * 20
-                draw.rectangle([(40, y_pos), (width - 40, y_pos + 10)], fill=text_color)
-            
-            for i in range(3):
-                y_pos = 380 + i * 20
-                draw.rectangle([(40, y_pos), (width - 40, y_pos + 10)], fill=text_color)
-        else:
-            # For website/dashboard
-            
-            # Header title area
-            draw.rectangle([(20, 20), (200, 60)], fill=primary_color)
-            
-            # Header navigation
-            for i in range(3):
-                x_pos = 250 + i * 120
-                draw.rectangle([(x_pos, 30), (x_pos + 80, 50)], fill=primary_color)
-            
-            # Sidebar menu items
-            for i in range(5):
-                y_pos = 120 + i * 60
-                draw.rectangle([(20, y_pos), (230, y_pos + 40)], fill=primary_color)
-                # Draw text lines
-                for j in range(2):
-                    draw.rectangle([(40, y_pos + 10 + j * 10), (200, y_pos + 15 + j * 10)], fill=text_color)
-            
-            # Main content area
-            # Card 1
-            draw.rectangle([(270, 100), (width - 20, 300)], fill="#FFFFFF", outline=secondary_color)
-            # Card heading
-            draw.rectangle([(290, 120), (500, 150)], fill=accent_color)
-            # Card content
-            for i in range(6):
-                y_pos = 170 + i * 20
-                length = width - 310 - (i % 3) * 50  # Vary line lengths
-                draw.rectangle([(290, y_pos), (length, y_pos + 10)], fill=text_color)
-            
-            # Card 2
-            draw.rectangle([(270, 320), (width - 20, 520)], fill="#FFFFFF", outline=secondary_color)
-            # Card heading
-            draw.rectangle([(290, 340), (500, 370)], fill=accent_color)
-            # Card content
-            for i in range(6):
-                y_pos = 390 + i * 20
-                length = width - 310 - ((i + 1) % 3) * 50  # Vary line lengths
-                draw.rectangle([(290, y_pos), (length, y_pos + 10)], fill=text_color)
-            
-            # Button examples
-            draw.rectangle([(290, 540), (400, 580)], fill=primary_color)  # Primary button
-            draw.rectangle([(420, 540), (530, 580)], fill=secondary_color)  # Secondary button
-            draw.rectangle([(550, 540), (660, 580)], fill=accent_color)  # Accent button
-            
-        # Add a color palette display at the bottom for reference
-        palette_width = 80
-        palette_height = 40
-        palette_y = height - 60 if template_type == "website" or template_type == "dashboard" else height - 120
-        colors = [primary_color, secondary_color, accent_color, background_color, text_color]
-        
-        for i, color in enumerate(colors):
-            x_pos = width - (len(colors) - i) * palette_width - 20
-            draw.rectangle([(x_pos, palette_y), (x_pos + palette_width, palette_y + palette_height)], fill=color, outline="#000000")
-        
-        # Convert image to base64
-        buffered = BytesIO()
-        img.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode()
-        
-        return {
-            "image_data": img_str,
-            "mime_type": "image/png"
-        }
-    
-    except Exception as e:
-        print(f"Error generating UI preview: {e}")
-        return None
-
-def generate_preview_with_gemini(color_palette, template_type, gemini_api_key):
-    """
-    Generate a UI preview using Gemini Flash API.
-    
-    Args:
-        color_palette: Dictionary containing organized color palette
-        template_type: Type of UI template to generate
-        gemini_api_key: Google Gemini API key
-    
-    Returns:
-        Dictionary with base64 encoded image or None if generation fails
-    """
-    try:
-        # Configure Gemini
-        genai.configure(api_key=gemini_api_key)
-        
-        # Get colors from palette
-        primary_color = color_palette["primary"]
-        secondary_color = color_palette["secondary"]
-        accent_color = color_palette["accent"]
-        background_color = color_palette["background"]
-        text_color = color_palette["text"]
-        
-        # Create model
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Create a detailed prompt instructing Gemini to generate a UI mockup
-        prompt = f"""
-        Generate a realistic {template_type} UI design mockup using EXACTLY these colors:
-        
-        Primary color: {primary_color} (for main elements, headers)
-        Secondary color: {secondary_color} (for secondary elements)
-        Accent color: {accent_color} (for buttons, highlights)
-        Background color: {background_color} (for page background)
-        Text color: {text_color} (for text content)
-        
-        The design should be modern, professional, and showcase how these colors work together in a real interface.
-        
-        {template_type.capitalize()} specifications:
-        """
-        
-        # Add template-specific instructions
-        if template_type == "mobile":
-            prompt += """
-            - Create a mobile app interface with header, content area and bottom navigation
-            - Show at least one screen with UI elements like buttons, cards, and text
-            - Include status bar, navigation elements, and interactive components
-            - Design should follow modern mobile UI principles
-            """
-        elif template_type == "dashboard":
-            prompt += """
-            - Create an analytics dashboard with sidebar navigation
-            - Include charts, data cards, and status indicators
-            - Show navigation, header bar, and main content area
-            - Design should be data-focused and business-oriented
-            """
-        else:  # website
-            prompt += """
-            - Create a modern website homepage design
-            - Include header with navigation, hero section, content blocks
-            - Show how colors apply to different sections (header, content, footer)
-            - Design should be clean, accessible, and contemporary
-            """
-        
-        prompt += """
-        Generate ONLY the image - no explanations or text about the colors in the response.
-        Make sure the image clearly shows how all five colors are used in the UI design.
-        """
-        
-        # Generate content
-        response = model.generate_content(prompt)
-        
-        # Check if there's an image in the response
-        if hasattr(response, 'parts') and len(response.parts) > 0:
-            for part in response.parts:
-                if hasattr(part, 'is_image') and part.is_image:
-                    # Extract image data
-                    image_data = part.data
-                    encoded_image = base64.b64encode(image_data).decode('utf-8')
-                    return {
-                        "image_data": encoded_image,
-                        "mime_type": "image/png"  # Assuming PNG format
-                    }
-        
-        # If no image found but response contains potential image URL (older API versions)
-        if hasattr(response, 'text'):
-            # Try to extract an image URL from the response
-            url_match = re.search(r'(https?://\S+\.(?:png|jpg|jpeg|gif))', response.text)
-            if url_match:
-                image_url = url_match.group(1)
-                # Download the image
-                img_response = requests.get(image_url)
-                if img_response.status_code == 200:
-                    encoded_image = base64.b64encode(img_response.content).decode('utf-8')
-                    mime_type = img_response.headers.get('Content-Type', 'image/png')
-                    return {
-                        "image_data": encoded_image,
-                        "mime_type": mime_type
-                    }
-        
-        # If we couldn't get an image from Gemini, return None to use fallback
-        return None
-        
-    except Exception as e:
-        print(f"Error generating preview with Gemini: {e}")
-        return None
-
-def ai_color_suggester(image_path, project_description, gemini_api_key, groq_api_key, generate_preview=False, template_type="website"):
+def ai_color_suggester(image_path, project_description, gemini_api_key, groq_api_key):
     """
     Main function to suggest colors based on both image and description.
     
@@ -491,11 +238,9 @@ def ai_color_suggester(image_path, project_description, gemini_api_key, groq_api
         project_description: Description of the project
         gemini_api_key: API key for Google Gemini
         groq_api_key: API key for Groq
-        generate_preview: Whether to generate a UI preview
-        template_type: Type of UI template for preview (website, mobile, dashboard)
         
     Returns:
-        Dictionary containing the suggested color palettes and optional preview
+        Dictionary containing the suggested color palettes
     """
     # Extract colors from image using Gemini Flash API
     print("Extracting colors from image using Gemini Flash API...")
@@ -512,29 +257,12 @@ def ai_color_suggester(image_path, project_description, gemini_api_key, groq_api
     # Combine all unique colors
     all_colors = list(set(image_colors + description_colors))
     
-    # Create the result dictionary
-    result = {
+    return {
         "image_based": image_colors,
         "description_based": description_colors,
         "organized_palette": organized_palette,
         "all_colors": all_colors
     }
-    
-    # Generate UI preview if requested
-    if generate_preview:
-        print("Generating UI preview with suggested colors...")
-        preview = generate_ui_preview({
-            "primary": organized_palette["primary"],
-            "secondary": organized_palette["secondary"],
-            "accent": organized_palette["accent"],
-            "background": organized_palette["background"],
-            "text": organized_palette["text"]
-        }, template_type, gemini_api_key)
-        
-        if preview:
-            result["preview"] = preview
-    
-    return result
 
 # Example usage
 if __name__ == "__main__":
@@ -553,19 +281,10 @@ if __name__ == "__main__":
     # Input example
     image_path = input("Enter image path or URL: ")
     project_description = input("Enter project description: ")
-    generate_preview = input("Generate UI preview? (y/n): ").lower() == 'y'
-    
-    if generate_preview:
-        template_type = input("Preview template type (website/mobile/dashboard) [default: website]: ").lower()
-        if template_type not in ["website", "mobile", "dashboard"]:
-            template_type = "website"
-    else:
-        template_type = "website"
     
     # Get color suggestions
     print("\nProcessing... This may take a moment.")
-    result = ai_color_suggester(image_path, project_description, gemini_api_key, groq_api_key, 
-                                 generate_preview, template_type)
+    result = ai_color_suggester(image_path, project_description, gemini_api_key, groq_api_key)
     
     # Print results
     print("\n===== COLOR ANALYSIS & SUGGESTIONS =====")
@@ -635,26 +354,5 @@ if __name__ == "__main__":
     print("  3. Colors are chosen to create a harmonious and professional appearance")
     print("  4. Consider testing these colors in different lighting conditions")
     
-    if "preview" in result and result["preview"]:
-        print("\n🖼️ UI Preview:")
-        print("  A preview image has been generated showing how your colors would look in a UI.")
-    
-        try:
-            from PIL import Image
-            import io
-            
-            # Convert base64 to image and show it
-            image_data = base64.b64decode(result["preview"]["image_data"])
-            image = Image.open(io.BytesIO(image_data))
-            
-            # Save the image to a file
-            preview_filename = "ui_preview.png"
-            image.save(preview_filename)
-            print(f"  Preview image saved as {preview_filename}")
-            
-            # Show the image in the default viewer
-            image.show()
-            print("  Opening preview image in your default image viewer...")
-        except Exception as e:
-            print(f"  Error displaying preview image: {e}")
-            print("  The base64-encoded image data is available in the 'preview' field of the result.")
+    print("\n🔍 Pro tip: Use WebAIM Contrast Checker to verify accessibility compliance")
+    print("====================================")
